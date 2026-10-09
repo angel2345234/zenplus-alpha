@@ -21,7 +21,7 @@ export async function createRequirement(input: CreateRequirementInput) {
     data: {
       opportunityId: input.opportunityId,
       operationType: input.operationType,
-      assetType: input.assetType,
+      assetType: input.assetType ?? "APARTMENT",
       zones: input.zones,
       budgetMin: input.budgetMin,
       budgetMax: input.budgetMax,

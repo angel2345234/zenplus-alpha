@@ -6,13 +6,17 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["core", "crm", "iam", "inventory"]
+  schemas  = ["core", "crm", "iam", "inventory", "finance"]
 }
 
+// ==========================================
+// ESQUEMA: CRM
+// ==========================================
+
 model Lead {
-  id             String       @id @default(cuid())
+  id             String        @id @default(cuid())
   source         LeadSource
-  status         LeadStatus   @default(NEW)
+  status         LeadStatus    @default(NEW)
   fullName       String
   email          String?
   phone          String?
@@ -22,11 +26,11 @@ model Lead {
   assignedTo     String?
   slaDueAt       DateTime?
   firstContactAt DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
   qualifiedAt    DateTime?
   activities     Activity[]
-  party          Party?       @relation(fields: [partyId], references: [id])
+  party          Party?        @relation(fields: [partyId], references: [id])
   opportunity    Opportunity?
 
   @@index([status])
@@ -88,6 +92,108 @@ model Opportunity {
   @@schema("crm")
 }
 
+model Requirement {
+  id            String      @id @default(cuid())
+  opportunityId String      @unique @map("opportunity_id")
+  operationType String      @map("operation_type") @db.VarChar(20)
+  assetType     String      @map("asset_type") @db.VarChar(30)
+  zones         String[]    @default([])
+  budgetMin     Decimal?    @map("budget_min") @db.Decimal(12, 2)
+  budgetMax     Decimal?    @map("budget_max") @db.Decimal(12, 2)
+  currency      String      @default("USD") @db.VarChar(3)
+  areaMin       Decimal?    @map("area_min") @db.Decimal(10, 2)
+  areaMax       Decimal?    @map("area_max") @db.Decimal(10, 2)
+  attributes    Json?
+  timeHorizon   String?     @map("time_horizon") @db.VarChar(30)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId])
+  @@map("requirement")
+  @@schema("crm")
+}
+
+model Visit {
+  id               String      @id @default(cuid())
+  opportunityId    String      @map("opportunity_id")
+  assetId          String      @map("asset_id")
+  scheduledAt      DateTime    @map("scheduled_at")
+  status           String      @default("SCHEDULED") @db.VarChar(20)
+  notes            String?
+  createdBy        String      @map("created_by")
+  rescheduleReason String?     @map("reschedule_reason")
+  rescheduledCount Int         @default(0) @map("rescheduled_count")
+  cancelReason     String?     @map("cancel_reason")
+  cancelledAt      DateTime?   @map("cancelled_at")
+  completedAt      DateTime?   @map("completed_at")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+  opportunity      Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId])
+  @@index([assetId])
+  @@index([scheduledAt])
+  @@map("visit")
+  @@schema("crm")
+}
+
+// ==========================================
+// ESQUEMA: CORE
+// ==========================================
+
+model parties {
+  id                  String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  party_type          party_type
+  created_at          DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime                @default(now()) @db.Timestamptz(6)
+  organizations       organizations?
+  persons             persons?
+  asset_price_history asset_price_history[]
+  assets              Asset[]
+  
+  // Relaciones F3 (Finance)
+  debtorObligations   FinanceObligation[]     @relation("DebtorObligations")
+  payerPayments       FinancePayment[]        @relation("PayerPayments")
+  advisorCommissions  CommercialCommission[]  @relation("AdvisorCommissions")
+
+  @@schema("core")
+}
+
+model organizations {
+  party_id   String   @id @db.Uuid
+  legal_name String   @db.VarChar(200)
+  trade_name String?  @db.VarChar(200)
+  tax_id     String   @unique @db.VarChar(20)
+  email      String?  @db.VarChar(150)
+  phone      String?  @db.VarChar(30)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  parties    parties  @relation(fields: [party_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([tax_id], map: "idx_organizations_tax_id")
+  @@schema("core")
+}
+
+model persons {
+  party_id   String   @id @db.Uuid
+  first_name String   @db.VarChar(100)
+  last_name  String   @db.VarChar(100)
+  doc_type   String   @db.VarChar(20)
+  doc_number String   @unique @db.VarChar(20)
+  email      String   @unique @db.VarChar(150)
+  phone      String?  @db.VarChar(30)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  parties    parties  @relation(fields: [party_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([doc_number], map: "idx_persons_doc_number")
+  @@index([email], map: "idx_persons_email")
+  @@schema("core")
+}
+
+// ==========================================
+// ESQUEMA: INVENTORY
+// ==========================================
+
 model Asset {
   id                  String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   code                String                @unique @db.VarChar(50)
@@ -128,49 +234,6 @@ model AssetTimeline {
   @@schema("inventory")
 }
 
-model organizations {
-  party_id   String   @id @db.Uuid
-  legal_name String   @db.VarChar(200)
-  trade_name String?  @db.VarChar(200)
-  tax_id     String   @unique @db.VarChar(20)
-  email      String?  @db.VarChar(150)
-  phone      String?  @db.VarChar(30)
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-  parties    parties  @relation(fields: [party_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([tax_id], map: "idx_organizations_tax_id")
-  @@schema("core")
-}
-
-model parties {
-  id                  String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  party_type          party_type
-  created_at          DateTime              @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime              @default(now()) @db.Timestamptz(6)
-  organizations       organizations?
-  persons             persons?
-  asset_price_history asset_price_history[]
-  assets              Asset[]
-
-  @@schema("core")
-}
-
-model persons {
-  party_id   String   @id @db.Uuid
-  first_name String   @db.VarChar(100)
-  last_name  String   @db.VarChar(100)
-  doc_type   String   @db.VarChar(20)
-  doc_number String   @unique @db.VarChar(20)
-  email      String   @unique @db.VarChar(150)
-  phone      String?  @db.VarChar(30)
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-  parties    parties  @relation(fields: [party_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([doc_number], map: "idx_persons_doc_number")
-  @@index([email], map: "idx_persons_email")
-  @@schema("core")
-}
-
 model asset_price_history {
   id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   asset_id   String    @db.Uuid
@@ -200,19 +263,6 @@ model asset_prices {
   @@schema("inventory")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  fullName  String
-  role      UserRole @default(ADVISOR)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("user")
-  @@schema("iam")
-}
-
 model Project {
   id          String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   code        String        @unique @db.VarChar(50)
@@ -226,15 +276,6 @@ model Project {
   units       Unit[]
 
   @@map("projects")
-  @@schema("inventory")
-}
-
-enum ProjectStatus {
-  PLANNING
-  PRE_SALE
-  CONSTRUCTION
-  DELIVERED
-
   @@schema("inventory")
 }
 
@@ -257,50 +298,149 @@ model Unit {
   @@schema("inventory")
 }
 
-model Requirement {
-  id             String           @id @default(cuid())
-  opportunityId  String           @map("opportunity_id")
-  operationType  String           @map("operation_type") @db.VarChar(20)
-  assetType      String           @map("asset_type") @db.VarChar(30)
-  zones          String[]         @default([])
-  budgetMin      Decimal?         @map("budget_min") @db.Decimal(12, 2)
-  budgetMax      Decimal?         @map("budget_max") @db.Decimal(12, 2)
-  currency       String           @default("USD") @db.VarChar(3)
-  areaMin        Decimal?         @map("area_min") @db.Decimal(10, 2)
-  areaMax        Decimal?         @map("area_max") @db.Decimal(10, 2)
-  attributes     Json?
-  timeHorizon    String?          @map("time_horizon") @db.VarChar(30)
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt      DateTime         @updatedAt @map("updated_at")
-  opportunity    Opportunity      @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+// ==========================================
+// ESQUEMA: IAM
+// ==========================================
 
-  @@index([opportunityId])
-  @@map("requirement")
-  @@schema("crm")
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  fullName  String
+  role      UserRole @default(ADVISOR)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user")
+  @@schema("iam")
 }
 
-model Visit {
-  id                String   @id @default(cuid())
-  opportunityId     String   @map("opportunity_id")
-  assetId           String   @map("asset_id")
-  scheduledAt       DateTime @map("scheduled_at")
-  status            String   @default("SCHEDULED") @db.VarChar(20)
-  notes             String?
-  createdBy         String   @map("created_by")
-  rescheduleReason  String?  @map("reschedule_reason")
-  rescheduledCount  Int      @default(0) @map("rescheduled_count")
-  cancelReason      String?  @map("cancel_reason")
-  cancelledAt       DateTime? @map("cancelled_at")
-  completedAt       DateTime? @map("completed_at")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  opportunity       Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+// ==========================================
+// ESQUEMA: FINANCE & AUDIT (FASE 3 · ALP3-006 a ALP3-010)
+// ==========================================
 
-  @@index([opportunityId])
-  @@index([assetId])
-  @@index([scheduledAt])
-  @@map("visit")
-  @@schema("crm")
+model FinanceObligation {
+  id            String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId   String                     @map("operation_id") @db.Uuid
+  debtorPartyId String                     @map("debtor_party_id") @db.Uuid
+  title         String                     @db.VarChar(150)
+  description   String?
+  currency      String                     @default("PEN") @db.VarChar(3)
+  totalAmount   Decimal                    @map("total_amount") @db.Decimal(14, 2)
+  paidAmount    Decimal                    @default(0.00) @map("paid_amount") @db.Decimal(14, 2)
+  dueDate       DateTime                   @map("due_date") @db.Date
+  status        ObligationStatus           @default(PENDING)
+  createdAt     DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  debtorParty   parties                    @relation("DebtorObligations", fields: [debtorPartyId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  allocations   FinancePaymentAllocation[]
+
+  @@index([operationId], map: "idx_obligations_operation")
+  @@index([debtorPartyId], map: "idx_obligations_debtor")
+  @@index([status, dueDate], map: "idx_obligations_status_due")
+  @@map("finance_obligations")
+  @@schema("finance")
+}
+
+model FinancePayment {
+  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId     String                     @map("operation_id") @db.Uuid
+  payerPartyId    String                     @map("payer_party_id") @db.Uuid
+  currency        String                     @default("PEN") @db.VarChar(3)
+  amount          Decimal                    @db.Decimal(14, 2)
+  allocatedAmount Decimal                    @default(0.00) @map("allocated_amount") @db.Decimal(14, 2)
+  paymentMethod   String                     @map("payment_method") @db.VarChar(50)
+  referenceCode   String?                    @map("reference_code") @db.VarChar(100)
+  proofDocumentId String?                    @map("proof_document_id") @db.Uuid
+  paymentDate     DateTime                   @map("payment_date") @db.Timestamptz(6)
+  status          PaymentStatus              @default(SUBMITTED)
+  verifiedBy      String?                    @map("verified_by") @db.Uuid
+  verifiedAt      DateTime?                  @map("verified_at") @db.Timestamptz(6)
+  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  payerParty      parties                    @relation("PayerPayments", fields: [payerPartyId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  allocations     FinancePaymentAllocation[]
+
+  @@index([operationId], map: "idx_payments_operation")
+  @@index([payerPartyId], map: "idx_payments_payer")
+  @@index([status], map: "idx_payments_status")
+  @@map("finance_payments")
+  @@schema("finance")
+}
+
+model FinancePaymentAllocation {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentId       String            @map("payment_id") @db.Uuid
+  obligationId    String            @map("obligation_id") @db.Uuid
+  amountAllocated Decimal           @map("amount_allocated") @db.Decimal(14, 2)
+  appliedAt       DateTime          @default(now()) @map("applied_at") @db.Timestamptz(6)
+  appliedBy       String            @map("applied_by") @db.Uuid
+
+  payment         FinancePayment    @relation(fields: [paymentId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  obligation      FinanceObligation @relation(fields: [obligationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([paymentId, obligationId], map: "uq_payment_obligation")
+  @@index([paymentId], map: "idx_allocations_payment")
+  @@index([obligationId], map: "idx_allocations_obligation")
+  @@map("finance_payment_allocations")
+  @@schema("finance")
+}
+
+model CommercialCommission {
+  id                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId           String           @map("operation_id") @db.Uuid
+  advisorPartyId        String           @map("advisor_party_id") @db.Uuid
+  role                  String           @db.VarChar(50)
+  currency              String           @default("PEN") @db.VarChar(3)
+  basisAmount           Decimal          @map("basis_amount") @db.Decimal(14, 2)
+  percentage            Decimal          @db.Decimal(5, 2)
+  finalCommissionAmount Decimal          @map("final_commission_amount") @db.Decimal(14, 2)
+  status                CommissionStatus @default(CALCULATED)
+  authorizedAt          DateTime?        @map("authorized_at") @db.Timestamptz(6)
+  authorizedBy          String?          @map("authorized_by") @db.Uuid
+  settledAt             DateTime?        @map("settled_at") @db.Timestamptz(6)
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  advisorParty          parties          @relation("AdvisorCommissions", fields: [advisorPartyId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([operationId], map: "idx_commissions_operation")
+  @@index([advisorPartyId], map: "idx_commissions_advisor")
+  @@map("commercial_commissions")
+  @@schema("finance")
+}
+
+model TransactionEvent {
+  id          BigInt   @id @default(autoincrement())
+  eventId     String   @unique @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
+  operationId String   @map("operation_id") @db.Uuid
+  eventType   String   @map("event_type") @db.VarChar(60)
+  actorId     String   @map("actor_id") @db.Uuid
+  actorRole   String   @map("actor_role") @db.VarChar(50)
+  payload     Json     @default("{}") @db.JsonB
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  ipAddress   String?  @map("ip_address") @db.Inet
+  userAgent   String?  @map("user_agent")
+
+  @@index([operationId, occurredAt], map: "idx_events_op_time")
+  @@index([eventType], map: "idx_events_type")
+  @@map("transaction_events")
+  @@schema("finance")
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum ProjectStatus {
+  PLANNING
+  PRE_SALE
+  CONSTRUCTION
+  DELIVERED
+
+  @@schema("inventory")
 }
 
 enum UnitStatus {
@@ -393,4 +533,31 @@ enum asset_type {
   COMMERCIAL_SPACE
 
   @@schema("inventory")
+}
+
+enum ObligationStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+
+  @@schema("finance")
+}
+
+enum PaymentStatus {
+  SUBMITTED
+  VERIFIED
+  REJECTED
+  VOIDED
+
+  @@schema("finance")
+}
+
+enum CommissionStatus {
+  CALCULATED
+  AUTHORIZED
+  SETTLED
+  CANCELLED
+
+  @@schema("finance")
 }

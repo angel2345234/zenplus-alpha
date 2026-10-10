@@ -1,15 +1,20 @@
-﻿{
+{
   "name": "zenplus-os",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["apps/*", "modules/*", "packages/*"],
-  "scripts": {
+  "workspaces": [
+    "apps/*",
+    "modules/*",
+    "packages/*"
+  ],
+ "scripts": {
     "dev": "npm run dev --workspace=apps/api",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "start": "next start",
     "lint": "eslint",
-    "test:fase2": "node tests/fase2-validation.js"
+    "test:fase2": "node tests/fase2-validation.js",
+    "test:finance": "tsx --env-file=.env apps/api/test-finance.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.2",

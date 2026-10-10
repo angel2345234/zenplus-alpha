@@ -14,8 +14,8 @@ import { visitRoutes } from "./modules/crm/visit.routes";
 import { assetRoutes } from "./modules/inventory/asset.routes";
 import { projectRoutes } from "./modules/inventory/project.routes";
 import { authRoutes } from "./modules/iam/auth.routes";
-import { financeRoutes } from "./modules/finance/finance.routes";
-//import { operationRoutes } from "./modules/operation/operation.routes";
+import { operationRoutes } from "./modules/operation/operation.routes";
+
 
 async function main() {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });

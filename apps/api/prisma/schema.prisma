@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["core", "crm", "iam", "inventory"]
+  schemas  = ["core", "crm", "iam", "inventory", "operation"]
 }
 
 model Lead {
@@ -259,7 +259,7 @@ model Unit {
 
 model Requirement {
   id             String           @id @default(cuid())
-  opportunityId  String           @map("opportunity_id")
+  opportunityId  String           @unique @map("opportunity_id")
   operationType  String           @map("operation_type") @db.VarChar(20)
   assetType      String           @map("asset_type") @db.VarChar(30)
   zones          String[]         @default([])
@@ -393,4 +393,108 @@ enum asset_type {
   COMMERCIAL_SPACE
 
   @@schema("inventory")
+}
+model Operation {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code          String              @unique @db.VarChar(50)
+  operationType OperationType       @default(SALE) @map("operation_type")
+  stage         OperationStage      @default(RESERVATION_HANDOFF)
+  agreedAmount  Decimal             @map("agreed_amount") @db.Decimal(14, 2)
+  currency      String              @default("USD") @db.VarChar(3)
+  reservationId String?             @unique @map("reservation_id") @db.Uuid
+  notes         String?
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  parties       OperationParty[]
+  assets        OperationAsset[]
+  handoff       ReservationHandoff?
+
+  @@index([stage])
+  @@index([reservationId])
+  @@map("operations")
+  @@schema("operation")
+}
+
+model OperationParty {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId String     @map("operation_id") @db.Uuid
+  partyId     String     @map("party_id") @db.Uuid
+  role        PartyRole
+  isPrimary   Boolean    @default(false) @map("is_primary")
+  notes       String?
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  operation   Operation  @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  @@unique([operationId, partyId, role], map: "uq_operation_party_role")
+  @@index([partyId])
+  @@map("operation_parties")
+  @@schema("operation")
+}
+
+model OperationAsset {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId String     @map("operation_id") @db.Uuid
+  assetId     String     @map("asset_id") @db.Uuid
+  unitId      String?    @map("unit_id") @db.Uuid
+  role        AssetRole  @default(PRIMARY)
+  agreedPrice Decimal?   @map("agreed_price") @db.Decimal(14, 2)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  operation   Operation  @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  @@unique([operationId, assetId], map: "uq_operation_asset")
+  @@index([assetId])
+  @@map("operation_assets")
+  @@schema("operation")
+}
+
+model ReservationHandoff {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId   String    @unique @map("operation_id") @db.Uuid
+  reservationId String    @unique @map("reservation_id") @db.Uuid
+  snapshotData  Json      @map("snapshot_data")
+  handedOffBy   String?   @map("handed_off_by") @db.VarChar(100)
+  handedOffAt   DateTime  @default(now()) @map("handed_off_at") @db.Timestamptz(6)
+  operation     Operation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  @@map("reservation_handoffs")
+  @@schema("operation")
+}
+
+enum OperationType {
+  SALE
+  RENT
+
+  @@schema("operation")
+}
+
+enum OperationStage {
+  DRAFT
+  RESERVATION_HANDOFF
+  DOCUMENT_COLLECTION
+  CONTRACT_PENDING
+  SIGNING
+  SETTLED
+  CANCELLED
+
+  @@schema("operation")
+}
+
+enum PartyRole {
+  BUYER
+  SELLER
+  LESSOR
+  TENANT
+  ADVISOR
+  LEGAL_REP
+
+  @@schema("operation")
+}
+
+enum AssetRole {
+  PRIMARY
+  PARKING
+  STORAGE
+  SECONDARY
+
+  @@schema("operation")
 }

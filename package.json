@@ -1,15 +1,20 @@
-﻿{
+{
   "name": "zenplus-os",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["apps/*", "modules/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "modules/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/api",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "start": "next start",
     "lint": "eslint",
-    "test:fase2": "node tests/fase2-validation.js"
+    "test:fase2": "node tests/fase2-validation.js",
+    "test:fase3": "node tests/fase3-validation.js"
   },
   "dependencies": {
     "dotenv": "^17.4.2",

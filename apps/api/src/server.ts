@@ -24,8 +24,8 @@ async function main() {
   await app.register(rateLimit, {
     max: 100,
     timeWindow: "1 minute",
-    keyGenerator: (req) => req.ip,
   });
+
   await registerAuth(app);
   await registerAuthorize(app);
   app.addHook("onRequest", requestIdHook);
@@ -44,7 +44,8 @@ async function main() {
   await app.register(assetRoutes);
   await app.register(projectRoutes);
   await app.register(authRoutes);
-  await app.register(operationRoutes);
+  await app.register(financeRoutes, { prefix: "/api/finance" });
+ // await app.register(operationRoutes);
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen({ port, host: "0.0.0.0" });

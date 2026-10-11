@@ -7,47 +7,88 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
   schemas  = ["core", "crm", "iam", "inventory", "finance", "operation"]
-  schemas  = ["core", "crm", "iam", "inventory", "operation"]
 }
 
-// ============================================================================
+// ==========================================
 // ESQUEMA: CRM
-// ============================================================================
+// ==========================================
 
 model Lead {
-  id            String    @id @default(cuid())
-  firstName     String    @map("first_name") @db.VarChar(100)
-  lastName      String?   @map("last_name") @db.VarChar(100)
-  email         String?   @db.VarChar(255)
-  phone         String?   @db.VarChar(50)
-  status        String    @default("NEW") @db.VarChar(50)
-  source        String?   @db.VarChar(50)
-  assignedToId  String?   @map("assigned_to_id")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id             String        @id @default(cuid())
+  source         LeadSource
+  status         LeadStatus    @default(NEW)
+  fullName       String
+  email          String?
+  phone          String?
+  message        String?
+  assetId        String?
+  partyId        String?
+  assignedTo     String?
+  slaDueAt       DateTime?
+  firstContactAt DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  qualifiedAt    DateTime?
+  activities     Activity[]
+  party          Party?        @relation(fields: [partyId], references: [id])
+  opportunity    Opportunity?
 
-  opportunities Opportunity[]
+  @@index([status])
+  @@index([assignedTo])
+  @@index([email])
+  @@index([phone])
+  @@map("lead")
+  @@schema("crm")
+}
 
-  @@map("leads")
+model Activity {
+  id        String       @id @default(cuid())
+  leadId    String
+  type      ActivityType
+  outcome   String?
+  notes     String?
+  createdBy String
+  createdAt DateTime     @default(now())
+  lead      Lead         @relation(fields: [leadId], references: [id])
+
+  @@index([leadId])
+  @@map("activity")
+  @@schema("crm")
+}
+
+model Party {
+  id        String    @id @default(cuid())
+  type      PartyType
+  email     String?   @unique
+  phone     String?
+  fullName  String?
+  company   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  leads     Lead[]
+
+  @@map("party")
   @@schema("crm")
 }
 
 model Opportunity {
-  id           String        @id @default(cuid())
-  leadId       String        @map("lead_id")
-  title        String        @db.VarChar(200)
-  stage        String        @default("QUALIFICATION") @db.VarChar(50)
-  amount       Decimal?      @db.Decimal(12, 2)
-  currency     String        @default("USD") @db.VarChar(3)
-  assignedToId String?       @map("assigned_to_id")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-
-  lead         Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  id           String           @id @default(cuid())
+  leadId       String           @unique
+  stage        OpportunityStage @default(NEW)
+  amount       Decimal?
+  currency     String           @default("PEN")
+  nextAction   String?
+  nextActionAt DateTime?
+  closedAt     DateTime?
+  closeReason  String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  lead         Lead             @relation(fields: [leadId], references: [id])
   requirement  Requirement?
   visits       Visit[]
 
-  @@map("opportunities")
+  @@index([stage])
+  @@map("opportunity")
   @@schema("crm")
 }
 
@@ -66,124 +107,433 @@ model Requirement {
   timeHorizon   String?     @map("time_horizon") @db.VarChar(30)
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
-
   opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
-
-  @@map("requirements")
-  @@schema("crm")
-}
-
-model Visit {
-  id            String      @id @default(cuid())
-  opportunityId String      @map("opportunity_id")
-  scheduledAt   DateTime    @map("scheduled_at")
-  status        String      @default("SCHEDULED") @db.VarChar(50)
-  notes         String?
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
-
-  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
-
-  @@map("visits")
-  @@schema("crm")
-}
-
-// ============================================================================
-// ESQUEMA: INVENTORY
-// ============================================================================
-
-model Project {
-  id          String   @id @default(cuid())
-  name        String   @db.VarChar(200)
-  description String?
-  location    String?  @db.VarChar(255)
-  status      String   @default("ACTIVE") @db.VarChar(50)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  assets      Asset[]
-
-  @@map("projects")
-  @@schema("inventory")
-}
-
-model Asset {
-  id          String   @id @default(cuid())
-  projectId   String?  @map("project_id")
-  code        String   @unique @db.VarChar(50)
-  title       String   @db.VarChar(200)
-  type        String   @db.VarChar(50)
-  status      String   @default("AVAILABLE") @db.VarChar(50)
-  price       Decimal  @db.Decimal(12, 2)
-  currency    String   @default("USD") @db.VarChar(3)
-  area        Decimal? @db.Decimal(10, 2)
-  details     Json?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  units       Unit[]
-
-  @@map("assets")
-  @@schema("inventory")
-}
-
-model Unit {
-  id        String   @id @default(cuid())
-  assetId   String   @map("asset_id")
-  code      String   @db.VarChar(50)
-  floor     Int?
-  price     Decimal? @db.Decimal(12, 2)
-  status    String   @default("AVAILABLE") @db.VarChar(50)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-
-  @@map("units")
-  @@schema("inventory")
-}
-
-model Requirement {
-  id             String           @id @default(cuid())
-  opportunityId  String           @unique @map("opportunity_id")
-  operationType  String           @map("operation_type") @db.VarChar(20)
-  assetType      String           @map("asset_type") @db.VarChar(30)
-  zones          String[]         @default([])
-  budgetMin      Decimal?         @map("budget_min") @db.Decimal(12, 2)
-  budgetMax      Decimal?         @map("budget_max") @db.Decimal(12, 2)
-  currency       String           @default("USD") @db.VarChar(3)
-  areaMin        Decimal?         @map("area_min") @db.Decimal(10, 2)
-  areaMax        Decimal?         @map("area_max") @db.Decimal(10, 2)
-  attributes     Json?
-  timeHorizon    String?          @map("time_horizon") @db.VarChar(30)
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt      DateTime         @updatedAt @map("updated_at")
-  opportunity    Opportunity      @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
 
   @@index([opportunityId])
   @@map("requirement")
   @@schema("crm")
 }
 
-model User {
-  id           String    @id @default(cuid())
-  email        String    @unique @db.VarChar(255)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  firstName    String    @map("first_name") @db.VarChar(100)
-  lastName     String?   @map("last_name") @db.VarChar(100)
-  role         String    @default("USER") @db.VarChar(50)
-  isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+model Visit {
+  id               String      @id @default(cuid())
+  opportunityId    String      @map("opportunity_id")
+  assetId          String      @map("asset_id")
+  scheduledAt      DateTime    @map("scheduled_at")
+  status           String      @default("SCHEDULED") @db.VarChar(20)
+  notes            String?
+  createdBy        String      @map("created_by")
+  rescheduleReason String?     @map("reschedule_reason")
+  rescheduledCount Int         @default(0) @map("rescheduled_count")
+  cancelReason     String?     @map("cancel_reason")
+  cancelledAt      DateTime?   @map("cancelled_at")
+  completedAt      DateTime?   @map("completed_at")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+  opportunity      Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
 
-  @@map("users")
+  @@index([opportunityId])
+  @@index([assetId])
+  @@index([scheduledAt])
+  @@map("visit")
+  @@schema("crm")
+}
+
+// ==========================================
+// ESQUEMA: CORE
+// ==========================================
+
+model parties {
+  id                  String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  party_type          party_type
+  created_at          DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime                @default(now()) @db.Timestamptz(6)
+  organizations       organizations?
+  persons             persons?
+  asset_price_history asset_price_history[]
+  assets              Asset[]
+
+  // Relaciones F3 (Finance)
+  debtorObligations   FinanceObligation[]     @relation("DebtorObligations")
+  payerPayments       FinancePayment[]        @relation("PayerPayments")
+  advisorCommissions  CommercialCommission[]  @relation("AdvisorCommissions")
+
+  @@schema("core")
+}
+
+model organizations {
+  party_id   String   @id @db.Uuid
+  legal_name String   @db.VarChar(200)
+  trade_name String?  @db.VarChar(200)
+  tax_id     String   @unique @db.VarChar(20)
+  email      String?  @db.VarChar(150)
+  phone      String?  @db.VarChar(30)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  parties    parties  @relation(fields: [party_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([tax_id], map: "idx_organizations_tax_id")
+  @@schema("core")
+}
+
+model persons {
+  party_id   String   @id @db.Uuid
+  first_name String   @db.VarChar(100)
+  last_name  String   @db.VarChar(100)
+  doc_type   String   @db.VarChar(20)
+  doc_number String   @unique @db.VarChar(20)
+  email      String   @unique @db.VarChar(150)
+  phone      String?  @db.VarChar(30)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  parties    parties  @relation(fields: [party_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([doc_number], map: "idx_persons_doc_number")
+  @@index([email], map: "idx_persons_email")
+  @@schema("core")
+}
+
+// ==========================================
+// ESQUEMA: INVENTORY
+// ==========================================
+
+model Asset {
+  id                  String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  code                String                @unique @db.VarChar(50)
+  name                String                @db.VarChar(150)
+  description         String?
+  assetType           asset_type            @map("asset_type")
+  status              asset_status          @default(DRAFT)
+  ownerPartyId        String?               @map("owner_party_id") @db.Uuid
+  areaM2              Decimal               @map("area_m2") @db.Decimal(10, 2)
+  currency            String                @default("USD") @db.VarChar(3)
+  currentPrice        Decimal               @map("current_price") @db.Decimal(12, 2)
+  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  asset_price_history asset_price_history[]
+  asset_prices        asset_prices[]
+  timeline            AssetTimeline[]
+  parties             parties?              @relation(fields: [ownerPartyId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([code], map: "idx_assets_code")
+  @@index([ownerPartyId], map: "idx_assets_owner")
+  @@index([status], map: "idx_assets_status")
+  @@map("assets")
+  @@schema("inventory")
+}
+
+model AssetTimeline {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assetId        String    @map("asset_id") @db.Uuid
+  previousStatus String?   @map("previous_status") @db.VarChar(50)
+  newStatus      String    @map("new_status") @db.VarChar(50)
+  actionType     String    @default("STATUS_CHANGE") @map("action_type") @db.VarChar(50)
+  details        String?
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  asset          Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([assetId], map: "idx_asset_timeline_asset_id")
+  @@map("asset_timeline")
+  @@schema("inventory")
+}
+
+model asset_price_history {
+  id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  asset_id   String    @db.Uuid
+  price      Decimal   @db.Decimal(12, 2)
+  currency   String    @default("USD") @db.VarChar(3)
+  valid_from DateTime  @default(now()) @db.Timestamptz(6)
+  valid_to   DateTime? @db.Timestamptz(6)
+  changed_by String?   @db.Uuid
+  reason     String?
+  assets     Asset     @relation(fields: [asset_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parties    parties?  @relation(fields: [changed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([asset_id], map: "idx_price_history_asset")
+  @@schema("inventory")
+}
+
+model asset_prices {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  asset_id   String    @db.Uuid
+  currency   String?   @default("USD") @db.VarChar(3)
+  amount     Decimal   @db.Decimal(12, 2)
+  is_current Boolean?  @default(true)
+  valid_from DateTime? @default(now()) @db.Timestamptz(6)
+  valid_to   DateTime? @db.Timestamptz(6)
+  assets     Asset     @relation(fields: [asset_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("inventory")
+}
+
+model Project {
+  id          String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  code        String        @unique @db.VarChar(50)
+  name        String        @db.VarChar(150)
+  description String?
+  status      ProjectStatus @default(PLANNING)
+  district    String?       @db.VarChar(100)
+  city        String?       @db.VarChar(100)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  units       Unit[]
+
+  @@map("projects")
+  @@schema("inventory")
+}
+
+model Unit {
+  id           String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  projectId    String     @map("project_id") @db.Uuid
+  code         String     @unique @db.VarChar(50)
+  name         String     @db.VarChar(150)
+  unitType     String     @map("unit_type") @db.VarChar(50)
+  areaM2       Decimal    @map("area_m2") @db.Decimal(10, 2)
+  bedrooms     Int        @default(0)
+  bathrooms    Int        @default(0)
+  currentPrice Decimal    @map("current_price") @db.Decimal(12, 2)
+  status       UnitStatus @default(AVAILABLE)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project      Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("units")
+  @@schema("inventory")
+}
+
+// ==========================================
+// ESQUEMA: IAM
+// ==========================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  fullName  String
+  role      UserRole @default(ADVISOR)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user")
   @@schema("iam")
 }
 
-// ============================================================================
-// ESQUEMA: FINANCE
-// ============================================================================
+// ==========================================
+// ESQUEMA: FINANCE & AUDIT (FASE 3 Ã”Ã¶Â¼â”œÃ‡ ALP3-006 a ALP3-010)
+// ==========================================
+
+model FinanceObligation {
+  id            String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId   String                     @map("operation_id") @db.Uuid
+  debtorPartyId String                     @map("debtor_party_id") @db.Uuid
+  title         String                     @db.VarChar(150)
+  description   String?
+  currency      String                     @default("PEN") @db.VarChar(3)
+  totalAmount   Decimal                    @map("total_amount") @db.Decimal(14, 2)
+  paidAmount    Decimal                    @default(0.00) @map("paid_amount") @db.Decimal(14, 2)
+  dueDate       DateTime                   @map("due_date") @db.Date
+  status        ObligationStatus           @default(PENDING)
+  createdAt     DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  debtorParty   parties                    @relation("DebtorObligations", fields: [debtorPartyId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  allocations   FinancePaymentAllocation[]
+
+  @@index([operationId], map: "idx_obligations_operation")
+  @@index([debtorPartyId], map: "idx_obligations_debtor")
+  @@index([status, dueDate], map: "idx_obligations_status_due")
+  @@map("finance_obligations")
+  @@schema("finance")
+}
+
+model FinancePayment {
+  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId     String                     @map("operation_id") @db.Uuid
+  payerPartyId    String                     @map("payer_party_id") @db.Uuid
+  currency        String                     @default("PEN") @db.VarChar(3)
+  amount          Decimal                    @db.Decimal(14, 2)
+  allocatedAmount Decimal                    @default(0.00) @map("allocated_amount") @db.Decimal(14, 2)
+  paymentMethod   String                     @map("payment_method") @db.VarChar(50)
+  referenceCode   String?                    @map("reference_code") @db.VarChar(100)
+  proofDocumentId String?                    @map("proof_document_id") @db.Uuid
+  paymentDate     DateTime                   @map("payment_date") @db.Timestamptz(6)
+  status          PaymentStatus              @default(SUBMITTED)
+  verifiedBy      String?                    @map("verified_by") @db.Uuid
+  verifiedAt      DateTime?                  @map("verified_at") @db.Timestamptz(6)
+  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  payerParty      parties                    @relation("PayerPayments", fields: [payerPartyId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  allocations     FinancePaymentAllocation[]
+
+  @@index([operationId], map: "idx_payments_operation")
+  @@index([payerPartyId], map: "idx_payments_payer")
+  @@index([status], map: "idx_payments_status")
+  @@map("finance_payments")
+  @@schema("finance")
+}
+
+model FinancePaymentAllocation {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentId       String            @map("payment_id") @db.Uuid
+  obligationId    String            @map("obligation_id") @db.Uuid
+  amountAllocated Decimal           @map("amount_allocated") @db.Decimal(14, 2)
+  appliedAt       DateTime          @default(now()) @map("applied_at") @db.Timestamptz(6)
+  appliedBy       String            @map("applied_by") @db.Uuid
+
+  payment         FinancePayment    @relation(fields: [paymentId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  obligation      FinanceObligation @relation(fields: [obligationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([paymentId, obligationId], map: "uq_payment_obligation")
+  @@index([paymentId], map: "idx_allocations_payment")
+  @@index([obligationId], map: "idx_allocations_obligation")
+  @@map("finance_payment_allocations")
+  @@schema("finance")
+}
+
+model CommercialCommission {
+  id                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId           String           @map("operation_id") @db.Uuid
+  advisorPartyId        String           @map("advisor_party_id") @db.Uuid
+  role                  String           @db.VarChar(50)
+  currency              String           @default("PEN") @db.VarChar(3)
+  basisAmount           Decimal          @map("basis_amount") @db.Decimal(14, 2)
+  percentage            Decimal          @db.Decimal(5, 2)
+  finalCommissionAmount Decimal          @map("final_commission_amount") @db.Decimal(14, 2)
+  status                CommissionStatus @default(CALCULATED)
+  authorizedAt          DateTime?        @map("authorized_at") @db.Timestamptz(6)
+  authorizedBy          String?          @map("authorized_by") @db.Uuid
+  settledAt             DateTime?        @map("settled_at") @db.Timestamptz(6)
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  advisorParty          parties          @relation("AdvisorCommissions", fields: [advisorPartyId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([operationId], map: "idx_commissions_operation")
+  @@index([advisorPartyId], map: "idx_commissions_advisor")
+  @@map("commercial_commissions")
+  @@schema("finance")
+}
+
+model TransactionEvent {
+  id          BigInt   @id @default(autoincrement())
+  eventId     String   @unique @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
+  operationId String   @map("operation_id") @db.Uuid
+  eventType   String   @map("event_type") @db.VarChar(60)
+  actorId     String   @map("actor_id") @db.Uuid
+  actorRole   String   @map("actor_role") @db.VarChar(50)
+  payload     Json     @default("{}") @db.JsonB
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  ipAddress   String?  @map("ip_address") @db.Inet
+  userAgent   String?  @map("user_agent")
+
+  @@index([operationId, occurredAt], map: "idx_events_op_time")
+  @@index([eventType], map: "idx_events_type")
+  @@map("transaction_events")
+  @@schema("finance")
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum ProjectStatus {
+  PLANNING
+  PRE_SALE
+  CONSTRUCTION
+  DELIVERED
+
+  @@schema("inventory")
+}
+
+enum UnitStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+
+  @@schema("inventory")
+}
+
+enum UserRole {
+  ADVISOR
+  ADMIN
+
+  @@schema("iam")
+}
+
+enum LeadSource {
+  WEB_FORM
+  WHATSAPP
+  PHONE
+  REFERRAL
+  OTHER
+
+  @@schema("crm")
+}
+
+enum LeadStatus {
+  NEW
+  ASSIGNED
+  CONTACTED
+  QUALIFIED
+  DISQUALIFIED
+  CONVERTED
+
+  @@schema("crm")
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  WHATSAPP
+  MEETING
+  NOTE
+
+  @@schema("crm")
+}
+
+enum PartyType {
+  PERSON
+  ORGANIZATION
+
+  @@schema("crm")
+}
+
+enum OpportunityStage {
+  NEW
+  QUALIFIED
+  VISIT_SCHEDULED
+  OFFER
+  RESERVATION
+  WON
+  LOST
+
+  @@schema("crm")
+}
+
+enum party_type {
+  PERSON
+  ORGANIZATION
+
+  @@schema("core")
+}
+
+enum asset_status {
+  DRAFT
+  UNDER_REVIEW
+  AVAILABLE
+  RESERVED
+  SOLD
+  IN_REVIEW
+
+  @@schema("inventory")
+}
+
+enum asset_type {
+  LOT
+  APARTMENT
+  HOUSE
+  COMMERCIAL_SPACE
+
+  @@schema("inventory")
+}
 
 enum ObligationStatus {
   PENDING
@@ -212,10 +562,6 @@ enum CommissionStatus {
   @@schema("finance")
 }
 
-// ============================================================================
-// ESQUEMA: OPERATION
-// ============================================================================
-
 model Operation {
   id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   code          String             @unique @db.VarChar(50)
@@ -230,7 +576,9 @@ model Operation {
   parties       OperationParty[]
   assets        OperationAsset[]
   handoff       ReservationHandoff?
-
+  stageHistory         OperationStageHistory[]
+  documentRequirements OperationDocumentRequirement[]
+  documents            OperationDocument[]
   @@index([stage])
   @@index([reservationId])
   @@map("operations")
@@ -320,109 +668,98 @@ enum AssetRole {
 
   @@schema("operation")
 }
-  @@schema("inventory")
-}
-model Operation {
-  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code          String              @unique @db.VarChar(50)
-  operationType OperationType       @default(SALE) @map("operation_type")
-  stage         OperationStage      @default(RESERVATION_HANDOFF)
-  agreedAmount  Decimal             @map("agreed_amount") @db.Decimal(14, 2)
-  currency      String              @default("USD") @db.VarChar(3)
-  reservationId String?             @unique @map("reservation_id") @db.Uuid
-  notes         String?
-  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  parties       OperationParty[]
-  assets        OperationAsset[]
-  handoff       ReservationHandoff?
 
-  @@index([stage])
-  @@index([reservationId])
-  @@map("operations")
+
+model OperationStageHistory {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId String          @map("operation_id") @db.Uuid
+  fromStage   OperationStage? @map("from_stage")
+  toStage     OperationStage  @map("to_stage")
+  changedBy   String          @default("SYSTEM") @map("changed_by") @db.VarChar(100)
+  reason      String?
+  metadata    Json            @default("{}")
+  changedAt   DateTime        @default(now()) @map("changed_at") @db.Timestamptz(6)
+  operation   Operation       @relation(fields: [operationId], references: [id], onDelete: Restrict)
+
+  @@index([operationId, changedAt(sort: Desc)], map: "idx_operation_stage_history_operation_time")
+  @@map("operation_stage_history")
   @@schema("operation")
 }
 
-model OperationParty {
-  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  operationId String     @map("operation_id") @db.Uuid
-  partyId     String     @map("party_id") @db.Uuid
-  role        PartyRole
-  isPrimary   Boolean    @default(false) @map("is_primary")
-  notes       String?
-  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  operation   Operation  @relation(fields: [operationId], references: [id], onDelete: Cascade)
+model AssetCommercialState {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assetId           String   @map("asset_id") @db.Uuid
+  unitId            String?  @map("unit_id") @db.Uuid
+  commercialStatus  String   @map("commercial_status") @db.VarChar(30)
+  sourceOperationId String?  @map("source_operation_id") @db.Uuid
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([operationId, partyId, role], map: "uq_operation_party_role")
-  @@index([partyId])
-  @@map("operation_parties")
+  @@index([commercialStatus], map: "idx_asset_commercial_state_status")
+  @@index([sourceOperationId], map: "idx_asset_commercial_state_source_operation")
+  @@map("asset_commercial_state")
   @@schema("operation")
 }
 
-model OperationAsset {
-  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  operationId String     @map("operation_id") @db.Uuid
-  assetId     String     @map("asset_id") @db.Uuid
-  unitId      String?    @map("unit_id") @db.Uuid
-  role        AssetRole  @default(PRIMARY)
-  agreedPrice Decimal?   @map("agreed_price") @db.Decimal(14, 2)
-  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  operation   Operation  @relation(fields: [operationId], references: [id], onDelete: Cascade)
+model OperationDocumentRequirement {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId      String              @map("operation_id") @db.Uuid
+  requirementCode  String              @map("requirement_code") @db.VarChar(80)
+  name             String              @db.VarChar(180)
+  description      String?
+  requiredForStage OperationStage?     @map("required_for_stage")
+  isRequired       Boolean             @default(true) @map("is_required")
+  metadata         Json                @default("{}")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  operation        Operation           @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  documents        OperationDocument[]
 
-  @@unique([operationId, assetId], map: "uq_operation_asset")
-  @@index([assetId])
-  @@map("operation_assets")
+  @@unique([operationId, requirementCode], map: "uq_operation_document_requirement")
+  @@index([operationId, requiredForStage], map: "idx_document_requirements_operation_stage")
+  @@map("document_requirements")
   @@schema("operation")
 }
 
-model ReservationHandoff {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  operationId   String    @unique @map("operation_id") @db.Uuid
-  reservationId String    @unique @map("reservation_id") @db.Uuid
-  snapshotData  Json      @map("snapshot_data")
-  handedOffBy   String?   @map("handed_off_by") @db.VarChar(100)
-  handedOffAt   DateTime  @default(now()) @map("handed_off_at") @db.Timestamptz(6)
-  operation     Operation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+model OperationDocument {
+  id             String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId    String                        @map("operation_id") @db.Uuid
+  requirementId  String?                       @map("requirement_id") @db.Uuid
+  documentType   String                        @map("document_type") @db.VarChar(80)
+  title          String                        @db.VarChar(180)
+  status         String                        @default("PENDING") @db.VarChar(24)
+  currentVersion Int                           @default(0) @map("current_version")
+  metadata       Json                          @default("{}")
+  createdBy      String                        @default("SYSTEM") @map("created_by") @db.VarChar(100)
+  createdAt      DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  operation      Operation                     @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  requirement    OperationDocumentRequirement? @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  versions       OperationDocumentVersion[]
 
-  @@map("reservation_handoffs")
+  @@index([operationId, status], map: "idx_documents_operation_status")
+  @@index([requirementId], map: "idx_documents_requirement")
+  @@map("documents")
   @@schema("operation")
 }
 
-enum OperationType {
-  SALE
-  RENT
+model OperationDocumentVersion {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId       String            @map("document_id") @db.Uuid
+  versionNumber    Int               @map("version_number")
+  storageProvider  String            @map("storage_provider") @db.VarChar(40)
+  storageKey       String            @map("storage_key")
+  originalFilename String            @map("original_filename") @db.VarChar(255)
+  mimeType         String            @map("mime_type") @db.VarChar(150)
+  sizeBytes        BigInt            @map("size_bytes")
+  checksumSha256   String?           @map("checksum_sha256") @db.Char(64)
+  uploadedBy       String            @default("SYSTEM") @map("uploaded_by") @db.VarChar(100)
+  metadata         Json              @default("{}")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  document         OperationDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
 
-  @@schema("operation")
-}
-
-enum OperationStage {
-  DRAFT
-  RESERVATION_HANDOFF
-  DOCUMENT_COLLECTION
-  CONTRACT_PENDING
-  SIGNING
-  SETTLED
-  CANCELLED
-
-  @@schema("operation")
-}
-
-enum PartyRole {
-  BUYER
-  SELLER
-  LESSOR
-  TENANT
-  ADVISOR
-  LEGAL_REP
-
-  @@schema("operation")
-}
-
-enum AssetRole {
-  PRIMARY
-  PARKING
-  STORAGE
-  SECONDARY
-
+  @@unique([documentId, versionNumber], map: "uq_document_version")
+  @@unique([storageProvider, storageKey], map: "uq_document_storage_key")
+  @@index([documentId, versionNumber(sort: Desc)], map: "idx_document_versions_document")
+  @@map("document_versions")
   @@schema("operation")
 }

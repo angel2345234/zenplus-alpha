@@ -1,54 +1,49 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const { Pool } = require('pg');
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+const sql = fs.readFileSync(
+  path.join(__dirname, '003_alpha_operation_lifecycle_documents.sql'),
+  'utf8'
+);
 
-if (!process.env.DATABASE_URL) {
-  console.error('DATABASE_URL no está definido. Configura el .env en la raíz del repositorio.');
-  process.exit(1);
-}
+const client = await pool.connect();
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-async function main() {
-  const sql = fs.readFileSync(path.join(__dirname, '003_alpha_operation_lifecycle_documents.sql'), 'utf8');
-  const client = await pool.connect();
-  try {
-    await client.query(sql);
+try {
+  // Ejecutar la migración una sola vez.
+  // El archivo SQL contiene su propio BEGIN/COMMIT.
+  await client.query(sql);
 
-    const result = await client.query(`
-  SELECT
-    current_database() AS database_name,
-    current_schema() AS schema_name,
-    to_regclass('operation.operation_stage_history') AS stage_history,
-    to_regclass('operation.document_requirements') AS document_requirements,
-    to_regclass('operation.documents') AS documents,
-    to_regclass('operation.document_versions') AS document_versions
-`);
+  console.log('Migración ALP3-003/004/005 aplicada correctamente.');
 
-    console.table(result.rows);
+  // Verificar que las tablas existan.
+  const result = await client.query(`
+    SELECT
+      current_database() AS database_name,
+      current_schema() AS schema_name,
+      to_regclass('operation.operation_stage_history') AS stage_history,
+      to_regclass('operation.document_requirements') AS document_requirements,
+      to_regclass('operation.documents') AS documents,
+      to_regclass('operation.document_versions') AS document_versions
+  `);
 
-    const row = result.rows[0];
+  console.table(result.rows);
 
-    const missing = [
-      'stage_history',
-      'document_requirements',
-      'documents',
-      'document_versions'
-    ].filter((key) => row[key] === null);
+  const row = result.rows[0];
 
-    if (missing.length > 0) {
-      throw new Error(
-        `Migración incompleta. Tablas faltantes: ${missing.join(', ')}`
-      );
-    }
+  const missing = [
+    'stage_history',
+    'document_requirements',
+    'documents',
+    'document_versions'
+  ].filter((key) => row[key] === null);
 
-    console.log('Migración ALP3-003/004/005 verificada correctamente.');
-  } catch (error) {
-    console.error('No se pudo aplicar la migración:', error.message);
-    process.exitCode = 1;
-  } finally {
-    client.release();
-    await pool.end();
+  if (missing.length > 0) {
+    throw new Error(
+      `Migración incompleta. Tablas faltantes: ${missing.join(', ')}`
+    );
   }
+
+  console.log('Migración ALP3-003/004/005 verificada correctamente.');
+} catch (error) {
+  console.error('No se pudo aplicar o verificar la migración:', error.message);
+  process.exitCode = 1;
+} finally {
+  client.release();
 }
-main().catch((error) => { console.error(error); process.exitCode = 1; });

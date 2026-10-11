@@ -39,9 +39,11 @@ yarn-error.log*
 
 # Environment
 .env
-.env.local
-.env.*.local
-.env*
+.env.*
+!.env.example
+
+# Local backups
+*.backup
 
 # Vercel
 .vercel

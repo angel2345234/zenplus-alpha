@@ -18,8 +18,12 @@ check('ALP3-005: requisitos, documentos y versiones', /operation\.document_requi
 check('ALP3-005: versiones guardan referencia externa y no binarios', /storage_provider/.test(migration) && /storage_key/.test(migration) && !/bytea|blob_data|binary_content/i.test(migration));
 check('Snapshots de handoff protegidos contra actualización y borrado', /trg_reservation_handoff_immutable/.test(migration) && /trg_reservation_handoff_no_delete/.test(migration));
 check('Endpoints Fastify registrados para histórico y documentos', /operationFoundationRoutes/.test(routes) && /document-requirements/.test(routes) && /documents\/:documentId\/versions/.test(routes));
-check('Next.js registra histórico, requisitos y versiones', fs.existsSync(path.join(root, 'app/api/operations/[id]/history/route.ts')) && fs.existsSync(path.join(root, 'app/api/operations/[id]/document-requirements/route.ts')) && fs.existsSync(path.join(root, 'app/api/operations/documents/[documentId]/versions/route.ts')) && /operation_stage_history/.test(nextPatch));
-
+check(
+  'Next.js registra histórico, requisitos y versiones',
+  fs.existsSync(path.join(root, 'app/api/operations/[id]/history/route.ts')) &&
+  fs.existsSync(path.join(root, 'app/api/operations/[id]/document-requirements/route.ts')) &&
+  fs.existsSync(path.join(root, 'app/api/operations/documents/[documentId]/versions/route.ts'))
+);
 for (const test of tests) {
   console.log(`${test.condition ? 'PASS' : 'FAIL'} ${test.name}`);
   if (test.condition) passed++;

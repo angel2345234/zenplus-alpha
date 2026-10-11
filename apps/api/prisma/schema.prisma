@@ -669,7 +669,6 @@ enum AssetRole {
   @@schema("operation")
 }
 
-
 model OperationStageHistory {
   id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   operationId String          @map("operation_id") @db.Uuid

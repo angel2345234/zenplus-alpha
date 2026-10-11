@@ -408,6 +408,9 @@ model Operation {
   parties       OperationParty[]
   assets        OperationAsset[]
   handoff       ReservationHandoff?
+  stageHistory  OperationStageHistory[]
+  documentRequirements OperationDocumentRequirement[]
+  documents     OperationDocument[]
 
   @@index([stage])
   @@index([reservationId])
@@ -444,6 +447,100 @@ model OperationAsset {
   @@unique([operationId, assetId], map: "uq_operation_asset")
   @@index([assetId])
   @@map("operation_assets")
+  @@schema("operation")
+}
+
+model OperationStageHistory {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId String         @map("operation_id") @db.Uuid
+  fromStage   OperationStage? @map("from_stage")
+  toStage     OperationStage @map("to_stage")
+  changedBy   String         @default("SYSTEM") @map("changed_by") @db.VarChar(100)
+  reason      String?
+  metadata    Json           @default("{}")
+  changedAt   DateTime       @default(now()) @map("changed_at") @db.Timestamptz(6)
+  operation   Operation     @relation(fields: [operationId], references: [id], onDelete: Restrict)
+
+  @@index([operationId, changedAt(sort: Desc)], map: "idx_operation_stage_history_operation_time")
+  @@map("operation_stage_history")
+  @@schema("operation")
+}
+
+model AssetCommercialState {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assetId           String   @map("asset_id") @db.Uuid
+  unitId            String?  @map("unit_id") @db.Uuid
+  commercialStatus  String   @map("commercial_status") @db.VarChar(30)
+  sourceOperationId String?  @map("source_operation_id") @db.Uuid
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([commercialStatus], map: "idx_asset_commercial_state_status")
+  @@index([sourceOperationId], map: "idx_asset_commercial_state_source_operation")
+  @@map("asset_commercial_state")
+  @@schema("operation")
+}
+
+model OperationDocumentRequirement {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId       String         @map("operation_id") @db.Uuid
+  requirementCode   String         @map("requirement_code") @db.VarChar(80)
+  name              String         @db.VarChar(180)
+  description       String?
+  requiredForStage  OperationStage? @map("required_for_stage")
+  isRequired        Boolean        @default(true) @map("is_required")
+  metadata          Json           @default("{}")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  operation         Operation     @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  documents         OperationDocument[]
+
+  @@unique([operationId, requirementCode], map: "uq_operation_document_requirement")
+  @@index([operationId, requiredForStage], map: "idx_document_requirements_operation_stage")
+  @@map("document_requirements")
+  @@schema("operation")
+}
+
+model OperationDocument {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operationId    String   @map("operation_id") @db.Uuid
+  requirementId  String?  @map("requirement_id") @db.Uuid
+  documentType   String   @map("document_type") @db.VarChar(80)
+  title          String   @db.VarChar(180)
+  status         String   @default("PENDING") @db.VarChar(24)
+  currentVersion Int      @default(0) @map("current_version")
+  metadata       Json     @default("{}")
+  createdBy      String   @default("SYSTEM") @map("created_by") @db.VarChar(100)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  operation      Operation @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  requirement    OperationDocumentRequirement? @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  versions       OperationDocumentVersion[]
+
+  @@index([operationId, status], map: "idx_documents_operation_status")
+  @@index([requirementId], map: "idx_documents_requirement")
+  @@map("documents")
+  @@schema("operation")
+}
+
+model OperationDocumentVersion {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId       String   @map("document_id") @db.Uuid
+  versionNumber    Int      @map("version_number")
+  storageProvider  String   @map("storage_provider") @db.VarChar(40)
+  storageKey       String   @map("storage_key")
+  originalFilename String   @map("original_filename") @db.VarChar(255)
+  mimeType         String   @map("mime_type") @db.VarChar(150)
+  sizeBytes        BigInt   @map("size_bytes")
+  checksumSha256   String?  @map("checksum_sha256") @db.Char(64)
+  uploadedBy       String   @default("SYSTEM") @map("uploaded_by") @db.VarChar(100)
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  document         OperationDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, versionNumber], map: "uq_document_version")
+  @@unique([storageProvider, storageKey], map: "uq_document_storage_key")
+  @@index([documentId, versionNumber(sort: Desc)], map: "idx_document_versions_document")
+  @@map("document_versions")
   @@schema("operation")
 }
 

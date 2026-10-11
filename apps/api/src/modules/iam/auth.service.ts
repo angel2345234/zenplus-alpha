@@ -24,7 +24,7 @@ export async function registerUser(input: RegisterInput) {
       email: input.email,
       password: hashedPassword,
       fullName: input.fullName,
-      role: "ADVISOR",
+      role: input.role,
     },
   });
 
@@ -39,11 +39,11 @@ export async function loginUser(input: LoginInput) {
   const valid = await bcrypt.compare(input.password, user.password);
   if (!valid) throw new Error("INVALID_CREDENTIALS");
 
-  const token = jwt.sign(
-    { sub: user.id, role: user.role, email: user.email },
-    JWT_SIGNING_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
-  );
+const token = jwt.sign(
+  { sub: user.id, role: user.role, email: user.email },
+  JWT_SIGNING_SECRET,
+  { expiresIn: JWT_EXPIRES_IN }
+);
 
   logger.info({ userId: user.id }, "User logged in");
   return {

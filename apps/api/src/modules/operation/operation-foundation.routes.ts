@@ -43,7 +43,10 @@ const transitionSchema = z.object({
 });
 
 export async function operationFoundationRoutes(app: FastifyInstance) {
-  app.get("/operations/:id/history", async (req, reply) => {
+  app.get(
+    "/operations/:id/history",
+    { preHandler: [(app as any).authenticate] },
+    async (req, reply) => {
     try {
       const { id } = req.params as { id: string };
       return reply.send({ success: true, data: await getOperationStageHistory(id) });
@@ -51,7 +54,10 @@ export async function operationFoundationRoutes(app: FastifyInstance) {
   });
 
 
-  app.post("/operations/:id/document-requirements", async (req, reply) => {
+  app.post(
+    "/operations/:id/document-requirements",
+    { preHandler: [(app as any).authenticate] },
+    async (req, reply) => {
     try {
       const { id } = req.params as { id: string };
       const input = requirementSchema.parse(req.body);
@@ -60,7 +66,10 @@ export async function operationFoundationRoutes(app: FastifyInstance) {
     } catch (error) { return handleError(error, reply); }
   });
 
-  app.post("/operations/:id/documents", async (req, reply) => {
+  app.post(
+    "/operations/:id/documents",
+    { preHandler: [(app as any).authenticate] },
+    async (req, reply) => {
     try {
       const { id } = req.params as { id: string };
       const input = documentSchema.parse(req.body);
@@ -69,7 +78,10 @@ export async function operationFoundationRoutes(app: FastifyInstance) {
     } catch (error) { return handleError(error, reply); }
   });
 
-  app.post("/operations/documents/:documentId/versions", async (req, reply) => {
+  app.post(
+    "/operations/documents/:documentId/versions",
+    { preHandler: [(app as any).authenticate] },
+    async (req, reply) => {
     try {
       const { documentId } = req.params as { documentId: string };
       const input = versionSchema.parse(req.body);

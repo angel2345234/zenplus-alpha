@@ -15,6 +15,7 @@ import { assetRoutes } from "./modules/inventory/asset.routes";
 import { projectRoutes } from "./modules/inventory/project.routes";
 import { authRoutes } from "./modules/iam/auth.routes";
 import { operationRoutes } from "./modules/operation/operation.routes";
+import { financeRoutes } from "./modules/finance/finance.routes";
 
 
 async function main() {

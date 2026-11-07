@@ -11,12 +11,12 @@ import {
   getOperationById,
   getOperationByReservationId,
   listOperations,
-  updateOperationStage,
   addPartyToOperation,
   addAssetToOperation,
   ConflictError,
   NotFoundError,
 } from "./operation.service";
+import { transitionOperationStage } from "./operation-foundation.service";
 
 export async function operationRoutes(app: FastifyInstance) {
   /**
@@ -24,82 +24,91 @@ export async function operationRoutes(app: FastifyInstance) {
    * ALP3-001: Reservation -> Operation handoff
    * Idempotencia estricta 1:1, captura de snapshot y creación atómica
    */
-  app.post("/operations/handoff", async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const input = handoffReservationSchema.parse(req.body);
-      const operation = await handoffReservationToOperation(input);
-      return reply.status(201).send({
-        success: true,
-        data: operation,
-      });
-    } catch (err: any) {
-      if (err instanceof ConflictError) {
-        return reply.status(409).send({
-          error: err.code,
-          message: err.message,
-          details: err.details,
-          requestId: (req as any).id,
+  app.post(
+    "/operations/handoff",
+    { preHandler: [(app as any).authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const input = handoffReservationSchema.parse(req.body);
+        const operation = await handoffReservationToOperation(input);
+        return reply.status(201).send({
+          success: true,
+          data: operation,
         });
+      } catch (err: any) {
+        if (err instanceof ConflictError) {
+          return reply.status(409).send({
+            error: err.code,
+            message: err.message,
+            details: err.details,
+            requestId: (req as any).id,
+          });
+        }
+        if (err.name === "ZodError") {
+          return reply.status(400).send({
+            error: "VALIDATION_ERROR",
+            message: err.message,
+            issues: err.errors,
+            requestId: (req as any).id,
+          });
+        }
+        req.log.error(err, "Error al procesar handoff de reserva a operación");
+        throw err;
       }
-      if (err.name === "ZodError") {
-        return reply.status(400).send({
-          error: "VALIDATION_ERROR",
-          message: err.message,
-          issues: err.errors,
-          requestId: (req as any).id,
-        });
-      }
-      req.log.error(err, "Error al procesar handoff de reserva a operación");
-      throw err;
-    }
-  });
+    });
 
   /**
    * GET /operations
    * ALP3-002: Listado de operaciones con filtros y paginación
    */
-  app.get("/operations", async (req: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const query = listOperationsQuerySchema.parse(req.query);
-      const result = await listOperations(query);
-      return reply.send({
-        success: true,
-        ...result,
-      });
-    } catch (err: any) {
-      if (err.name === "ZodError") {
-        return reply.status(400).send({
-          error: "VALIDATION_ERROR",
-          message: err.message,
-          issues: err.errors,
+  app.get(
+    "/operations",
+    { preHandler: [(app as any).authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const query = listOperationsQuerySchema.parse(req.query);
+        const result = await listOperations(query);
+        return reply.send({
+          success: true,
+          ...result,
         });
+      } catch (err: any) {
+        if (err.name === "ZodError") {
+          return reply.status(400).send({
+            error: "VALIDATION_ERROR",
+            message: err.message,
+            issues: err.errors,
+          });
+        }
+        throw err;
       }
-      throw err;
-    }
-  });
+    });
 
   /**
    * GET /operations/:id
    * Consulta detallada de operación con partes, activos y snapshot
    */
-  app.get("/operations/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    try {
-      const operation = await getOperationById(req.params.id);
-      return reply.send({
-        success: true,
-        data: operation,
-      });
-    } catch (err: any) {
-      if (err instanceof NotFoundError) {
-        return reply.status(404).send({
-          error: err.code,
-          message: err.message,
-          requestId: (req as any).id,
+  app.get(
+    "/operations/:id",
+    { preHandler: [(app as any).authenticate] },
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      try {
+        const operation = await getOperationById(req.params.id);
+        return reply.send({
+          success: true,
+          data: operation,
         });
+      } catch (err: any) {
+        if (err instanceof NotFoundError) {
+          return reply.status(404).send({
+            error: err.code,
+            message: err.message,
+            requestId: (req as any).id,
+          });
+        }
+        throw err;
       }
-      throw err;
-    }
-  });
+    });
 
   /**
    * GET /operations/by-reservation/:reservationId
@@ -107,6 +116,7 @@ export async function operationRoutes(app: FastifyInstance) {
    */
   app.get(
     "/operations/by-reservation/:reservationId",
+    { preHandler: [(app as any).authenticate] },
     async (req: FastifyRequest<{ Params: { reservationId: string } }>, reply: FastifyReply) => {
       try {
         const operation = await getOperationByReservationId(req.params.reservationId);
@@ -133,15 +143,24 @@ export async function operationRoutes(app: FastifyInstance) {
    */
   app.patch(
     "/operations/:id/stage",
+    { preHandler: [(app as any).authenticate] },
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       try {
         const input = updateOperationStageSchema.parse(req.body);
-        const updated = await updateOperationStage(req.params.id, input.stage, input.notes);
+        const updated = await transitionOperationStage(
+          req.params.id,
+          input.stage,
+          (req as any).user.sub,
+          input.notes
+        );
         return reply.send({
           success: true,
           data: updated,
         });
       } catch (err: any) {
+        if (err instanceof ConflictError) {
+          return reply.status(409).send({ error: err.code, message: err.message, details: err.details });
+        }
         if (err instanceof NotFoundError) {
           return reply.status(404).send({
             error: err.code,
@@ -167,6 +186,7 @@ export async function operationRoutes(app: FastifyInstance) {
    */
   app.post(
     "/operations/:id/parties",
+    { preHandler: [(app as any).authenticate] },
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       try {
         const input = createOperationPartySchema.parse(req.body);
@@ -208,6 +228,7 @@ export async function operationRoutes(app: FastifyInstance) {
    */
   app.post(
     "/operations/:id/assets",
+    { preHandler: [(app as any).authenticate] },
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       try {
         const input = createOperationAssetSchema.parse(req.body);
